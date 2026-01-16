@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>SB County Foreclosure Map</title>
+    
+    <!-- Leaflet & Tailwind -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+    <style>
+        body { margin: 0; padding: 0; background-color: #0f172a; color: white; overflow-x: hidden; }
+        #map { height: 65vh; width: 100%; }
+        /* Dark Mode Map Filter */
+        .leaflet-tile-container { filter: brightness(0.6) invert(1) contrast(3) hue-rotate(200deg) saturate(0.3) brightness(0.7); }
+        .leaflet-container { background: #0f172a; }
+        .leaflet-popup-content-wrapper { background: #1e293b; color: white; border-radius: 8px; }
+        .leaflet-popup-tip { background: #1e293b; }
+    </style>
+</head>
+<body class="font-sans">
+
+    <!-- Header -->
+    <header class="p-4 bg-slate-900 border-b border-slate-800 flex justify-between items-center shadow-md">
+        <h1 class="text-lg font-bold text-blue-400">Live Leads</h1>
+        <div id="count" class="text-xs bg-blue-900/40 text-blue-300 px-2 py-1 rounded-full border border-blue-500/30">
+            Syncing...
+        </div>
+    </header>
+
+    <!-- Map Container -->
+    <div id="map"></div>
+
+    <!-- Leads List -->
+    <div class="p-4 bg-slate-900 min-h-[35vh]">
+        <h2 class="text-sm font-uppercase tracking-wider text-slate-500 font-bold mb-4">RECENTLY HARVESTED</h2>
+        <div id="lead-list" class="space-y-3">
+            <div class="animate-pulse flex space-x-4">
+                <div class="flex-1 space-y-4 py-1">
+                    <div class="h-4 bg-slate-800 rounded w-3/4"></div>
+                    <div class="h-4 bg-slate-800 rounded w-1/2"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <script>
+        // Supabase Credentials
+        const SB_URL = "https://ditsaqbbfpqgtiffjfin.supabase.co";
+        const SB_KEY = "Sb_publishable_VfBkkzVjVUfarKEtsxwcyw_jRLGho8C";
+        const supabaseClient = supabase.createClient(SB_URL, SB_KEY);
+
+        // Init Map (Center on San Bernardino)
+        const map = L.map('map', { zoomControl: false }).setView([34.1083, -117.2898], 10);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap'
+        }).addTo(map);
+
+        async function loadLeads() {
+            const listEl = document.getElementById('lead-list');
+            const countEl = document.getElementById('count');
+
+            try {
+                const { data, error } = await supabaseClient
+                    .from('listings')
+                    .select('*')
+                    .order('created_at', { ascending: false });
+
+                if (error) throw error;
+
+                countEl.innerText = `${data.length} Leads Found`;
+                listEl.innerHTML = ''; 
+
+                data.forEach(lead => {
+                    // Add Map Marker
+                    const marker = L.marker([lead.lat, lead.lng]).addTo(map);
+                    marker.bindPopup(`
+                        <div class="text-sm">
+                            <b class="text-blue-400">${lead.address}</b><br>
+                            <span class="text-slate-400">${lead.city}</span><br>
+                            <span class="text-green-400 font-bold text-base">${lead.amount}</span><br>
+                            <span class="text-[10px] text-red-400 font-bold uppercase">${lead.stage}</span>
+                        </div>
+                    `);
+
+                    // Add List Card
+                    const card = document.createElement('div');
+                    card.className = "p-4 bg-slate-800/50 rounded-xl border border-slate-700/50 active:bg-slate-700 transition-colors";
+                    card.innerHTML = `
+                        <div class="flex justify-between items-center">
+                            <div>
+                                <div class="font-bold text-slate-100">${lead.address}</div>
+                                <div class="text-xs text-slate-400">${lead.city}</div>
+                            </div>
+                            <div class="text-right">
+                                <div class="text-green-400 font-bold font-mono">${lead.amount}</div>
+                                <div class="text-[10px] text-slate-500 uppercase">${lead.stage}</div>
+                            </div>
+                        </div>
+                    `;
+                    
+                    // Tap card to fly to marker
+                    card.onclick = () => {
+                        map.flyTo([lead.lat, lead.lng], 15);
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                    };
+                    
+                    listEl.appendChild(card);
+                });
+
+            } catch (err) {
+                console.error(err);
+                countEl.innerText = "Sync Error";
+                listEl.innerHTML = '<p class="text-red-400 text-sm">Failed to connect to database.</p>';
+            }
+        }
+
+        window.onload = loadLeads;
+    </script>
+</body>
+</html>
+
