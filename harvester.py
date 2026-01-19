@@ -1,38 +1,70 @@
-import random
-import time
 import os
+import requests
+from bs4 import BeautifulSoup
 from supabase import create_client
 
+# --- CONFIG ---
 URL = os.environ.get("SUPABASE_URL")
 KEY = os.environ.get("SUPABASE_KEY")
 supabase = create_client(URL, KEY)
 
-cities = [
-    {"name": "Apple Valley", "lat": 34.5008, "lng": -117.1859},
-    {"name": "Ontario", "lat": 34.0633, "lng": -117.6509},
-    {"name": "San Bernardino", "lat": 34.1083, "lng": -117.2898},
-    {"name": "Victorville", "lat": 34.5361, "lng": -117.2911},
-    {"name": "Hesperia", "lat": 34.4264, "lng": -117.3009}
-]
+# The target: Public foreclosure listings for SB County
+# We use headers to look like a real browser to avoid being blocked
+SEARCH_URL = "https://www.foreclosure.com/listing/search?q=San+Bernardino+County%2C+CA"
+HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+}
 
-def harvest():
-    city = random.choice(cities)
-    data = {
-        "address": f"{random.randint(100, 9999)} Cloud Lane",
-        "city": city["name"],
-        "amount": f"${random.randint(5000, 450000):,}",
-        "lat": city["lat"] + random.uniform(-0.05, 0.05),
-        "lng": city["lng"] + random.uniform(-0.05, 0.05),
-        "stage": "NOD"
-    }
+def run_cloud_harvest():
+    print("📡 Cloud Harvester starting: Searching for NOD/Trustee Sales...")
+    
     try:
-        supabase.table("listings").insert(data).execute()
-        print(f"🚀 Harvested: {data['address']}")
+        response = requests.get(SEARCH_URL, headers=HEADERS, timeout=15)
+        soup = BeautifulSoup(response.text, 'html.parser')
+        
+        # Look for the listing containers (this selector depends on the target site)
+        listings = soup.find_all('div', class_='listing-item') 
+        
+        if not listings:
+            print("⚠️ No listings found in this pass. Site structure may have changed.")
+            return
+
+        for item in listings:
+            try:
+                # Extracting raw text
+                address = item.find('div', class_='address').text.strip()
+                price = item.find('div', class_='price').text.strip()
+                type_tag = item.find('span', class_='type').text.upper()
+
+                # Logic to identify the specific stage you want
+                if "DEFAULT" in type_tag:
+                    stage = "NOD"
+                elif "SALE" in type_tag or "AUCTION" in type_tag:
+                    stage = "TRUSTEE SALE"
+                else:
+                    stage = "PRE-FORECLOSURE"
+
+                # Data package for Supabase
+                # Note: For a live map, you'd usually pass address through a Geocoder
+                # Here we use city-center offsets for SB County for visualization
+                lead = {
+                    "address": address,
+                    "city": "San Bernardino County",
+                    "amount": price,
+                    "stage": stage,
+                    "lat": 34.10 + (os.urandom(1)[0]/2550), # Slight variance
+                    "lng": -117.28 + (os.urandom(1)[0]/2550)
+                }
+
+                # Push to Supabase
+                supabase.table('listings').upsert(lead, on_conflict='address').execute()
+                print(f"✅ Harvested {stage}: {address}")
+
+            except Exception as e:
+                continue
+
     except Exception as e:
-        print(f"❌ Error: {e}")
+        print(f"❌ Harvester Error: {e}")
 
 if __name__ == "__main__":
-    for _ in range(5):
-        harvest()
-        time.sleep(1)
-
+    run_cloud_harvest()
