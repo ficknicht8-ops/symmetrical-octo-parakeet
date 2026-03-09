@@ -1,23 +1,56 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Document</title>
-    <script>
-        // Anon Key
-        const anonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRpdHNhcWJiZnBxZ3RpZmZqZmluIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgwODIwOTcsImV4cCI6MjA4MzY1ODA5N30.rIrVTfMpdzeS3qS5gsfKbM3Q8S-JtpWqoMuNtbITzgA";
-
-        // Improved Error Handling
-        try {
-            // Your logic here
-        } catch (error) {
-            console.error('An error occurred:', error);
-            alert('An error occurred, please try again later.');
-        }
-    </script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Leads Dashboard</title>
 </head>
 <body>
-    <h1>Hello World!</h1>
+  <h1>Leads Dashboard</h1>
+  <div id="error" style="color:#b00"></div>
+  <table id="leads" border="1" cellpadding="6" style="border-collapse:collapse">
+    <thead>
+      <tr>
+        <th>Address</th>
+        <th>City</th>
+        <th>Stage</th>
+        <th>Amount</th>
+        <th>Lat</th>
+        <th>Lng</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+  <script type="module">
+    import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm";
+    // Replace with your actual Supabase URL and anon key!
+    const SUPABASE_URL = "YOUR_SUPABASE_URL";
+    const SUPABASE_ANON_KEY = "YOUR_SUPABASE_ANON_KEY";
+
+    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    async function loadLeads() {
+      const { data, error } = await supabase.from("listings").select("*").order("id", { ascending: false }).limit(100);
+      if (error) {
+        document.getElementById("error").textContent = "Error: " + error.message;
+        return;
+      }
+      const tbody = document.querySelector("#leads tbody");
+      tbody.innerHTML = "";
+      for (const row of data) {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${row.address || ""}</td>
+          <td>${row.city || ""}</td>
+          <td>${row.stage || ""}</td>
+          <td>${row.amount ? "$" + row.amount : ""}</td>
+          <td>${row.lat !== undefined ? Number(row.lat).toFixed(5) : ""}</td>
+          <td>${row.lng !== undefined ? Number(row.lng).toFixed(5) : ""}</td>
+        `;
+        tbody.appendChild(tr);
+      }
+    }
+    loadLeads();
+  </script>
 </body>
 </html>
